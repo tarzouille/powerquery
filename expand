@@ -1,0 +1,43 @@
+let 
+
+    Source = #"filtre les feuilles", 
+
+    #"Erreurs supprimées" = Table.RemoveRowsWithErrors(Source, {"fct_filtre"}), 
+
+    #"fct_filtre développé" = Table.ExpandTableColumn(#"Erreurs supprimées", "fct_filtre", {"Column1", "DEPART", "ARRIVEE", "DEPART_1", "ARRIVEE_2", "Navire"}, {"Column1", "DEPART", "ARRIVEE", "DEPART_1", "ARRIVEE_2", "Navire"}), 
+/*
+    //https://www.powerquery.io/date-time/datetime.addzone
+    #"ajoutée_Dep-Dieppe" = Table.AddColumn(#"fct_filtre développé", "TZ-Dep-Dieppe", each DateTime.AddZone(([Date]&[DEPART dieppe]),1,null),type datetimezone),
+    #"ajoutée_Arv-NH" = Table.AddColumn(#"ajoutée_Dep-Dieppe", "TZ-Arv-NH", each DateTime.AddZone(([Date]&[ARRIVEE NH]),0,null),type datetimezone),
+    #"ajoutée_Dep-NH" = Table.AddColumn(#"ajoutée_Arv-NH", "TZ-Dep-NH", each DateTime.AddZone(([Date]&[DEPART NH]),0,null),type datetimezone),
+    #"ajoutée_Arv-Dieppe" = Table.AddColumn(#"ajoutée_Dep-NH", "TZ-Arv-Dieppe", each DateTime.AddZone(([Date]&[ARRIVEE dieppe]),1,null),type datetimezone),
+    #"Colonnes supprimées" = Table.RemoveColumns(#"ajoutée_Arv-Dieppe",{"Date", "DEPART dieppe", "ARRIVEE NH", "DEPART NH", "ARRIVEE dieppe"}),
+    #"ajouter Trav. Aller" = Table.AddColumn(#"Colonnes supprimées", "Trav A", each Duration.TotalMinutes(([#"TZ-Arv-NH"]-[#"TZ-Dep-Dieppe"]))),
+    #"ajouter Trav. Rtour" = Table.AddColumn(#"ajouter Trav. Aller", "Trav R", each Duration.TotalMinutes(([#"TZ-Arv-Dieppe"]-[#"TZ-Dep-NH"])))
+    */
+    #"Texte extrait entre les délimiteurs" = Table.TransformColumns(#"fct_filtre développé", {{"Name", each Text.BetweenDelimiters(_, " ", " "), type text}}), 
+
+    #"Type modifié" = Table.TransformColumnTypes(#"Texte extrait entre les délimiteurs",{{"Name", Int64.Type}, {"Column1", type date}, {"DEPART", type time}, {"ARRIVEE", type time}, {"DEPART_1", type time}, {"ARRIVEE_2", type time}, {"Navire", type text}}), 
+    
+    #"supprime Date vide" = Table.SelectRows(#"Type modifié", each ([Column1] <> null)), 
+    
+    #"Départ Dieppe" = Table.AddColumn(#"Type modifié", "Départ Dieppe", each [Column1] & [DEPART] & "fr-FR", type datetimezone),
+    #"Arrivée NH" = Table.AddColumn(#"Départ Dieppe", "Arrivée NH", each if [DEPART] < #time(21, 59, 0) then ([Column1] & [ARRIVEE]) else ( Date.AddDays([Column1] , 1) & [ARRIVEE]), type datetimezone),
+    #"Départ NH" = Table.AddColumn(#"Arrivée NH", "Départ NH", each [Column1] & [DEPART_1], type datetimezone),
+    #"Arrivée Dieppe" = Table.AddColumn(#"Départ NH", "Arrivée Dieppe", (each if(Time.Hour([DEPART_1]) < 21 )then ([Column1] & [ARRIVEE_2]) else Date.AddDays([Column1],1) & [ARRIVEE_2]), type datetimezone),
+    #"Créa Colonne Arv. NH h_FR" = Table.AddColumn(#"Arrivée Dieppe", "Arv. NH fr", each Text.Combine({Text.From([Arrivée NH], "fr-FR"), " +00:00"}), type datetimezone),
+    #"Créa Colonne Dep. NH h_FR" = Table.AddColumn(#"Créa Colonne Arv. NH h_FR", "Dep. NH fr", each Text.Combine({Text.From([Départ NH], "fr-FR"), " +00:00"}), type datetimezone),
+    #"Type (fuseaux horai)" = Table.TransformColumnTypes(#"Créa Colonne Dep. NH h_FR",{{"Départ Dieppe", type datetimezone}, {"Arrivée NH", type datetimezone}, {"Départ NH", type datetimezone}, {"Arrivée Dieppe", type datetimezone}, {"Arv. NH fr", type datetimezone}, {"Dep. NH fr", type datetimezone}}),
+    #"Col ajoutée transit A" = Table.AddColumn(#"Type (fuseaux horai)", "transit A", each Duration.TotalMinutes([Arv. NH fr]-[Départ Dieppe])),
+    #"Col ajoutée transit R" = Table.AddColumn(#"Col ajoutée transit A", "transit R", each Duration.TotalMinutes([Arrivée Dieppe]-[Dep. NH fr])),
+
+    #"Colonnes supprimées" = Table.RemoveColumns(#"Col ajoutée transit R",{"Column1", "DEPART", "ARRIVEE", "DEPART_1", "ARRIVEE_2"}), 
+
+    #"Colonnes permutées" = Table.ReorderColumns(#"Colonnes supprimées",{"Name", "Départ Dieppe", "Arrivée NH", "Départ NH", "Arrivée Dieppe", "Navire"}), 
+
+    #"Index ajouté" = Table.AddIndexColumn(#"Colonnes permutées", "Index", 1, 1, Int64.Type),
+    #"Type modifié1" = Table.TransformColumnTypes(#"Index ajouté",{{"Arrivée Dieppe", type datetime}}) 
+
+in 
+
+    #"Type modifié1"
